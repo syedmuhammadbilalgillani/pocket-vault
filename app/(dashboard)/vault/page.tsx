@@ -1,0 +1,95 @@
+import Link from "next/link"
+import { KeyRound, Plus, Star, Trash2 } from "lucide-react"
+
+import { requireUser } from "@/lib/auth/require-user"
+import { listVaultItems } from "@/server/repositories/vault-items"
+import { ensureDefaultVaultCategories } from "@/server/repositories/vault-categories"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+
+export default async function VaultPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>
+}) {
+  const user = await requireUser()
+  const { q } = await searchParams
+
+  const [items, categories] = await Promise.all([
+    listVaultItems(user.id, { search: q }),
+    ensureDefaultVaultCategories(user.id),
+  ])
+  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]))
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="font-heading text-xl font-semibold">Vault</h1>
+          <p className="text-sm text-muted-foreground">Your saved account credentials.</p>
+        </div>
+        <Button asChild size="sm">
+          <Link href="/vault/new">
+            <Plus /> Add
+          </Link>
+        </Button>
+      </div>
+
+      <form className="flex gap-2" action="/vault">
+        <Input name="q" defaultValue={q} placeholder="Search by title..." className="flex-1" />
+        <Button type="submit" variant="secondary">
+          Search
+        </Button>
+      </form>
+
+      {items.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <KeyRound className="size-8 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">
+              {q ? "No credentials match your search." : "No credentials saved yet."}
+            </p>
+            {!q && (
+              <Button asChild size="sm">
+                <Link href="/vault/new">Add your first credential</Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((item) => (
+            <li key={item.id}>
+              <Link href={`/vault/${item.id}`}>
+                <Card>
+                  <CardContent className="flex items-center gap-3 py-3">
+                    <KeyRound className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{item.title}</p>
+                      {item.categoryId && categoryNameById.has(item.categoryId) && (
+                        <Badge variant="secondary" className="mt-1">
+                          {categoryNameById.get(item.categoryId)}
+                        </Badge>
+                      )}
+                    </div>
+                    {item.isFavorite && (
+                      <Star className="size-4 shrink-0 fill-current text-primary" aria-hidden="true" />
+                    )}
+                  </CardContent>
+                </Card>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Button asChild variant="ghost" size="sm" className="self-start text-muted-foreground">
+        <Link href="/vault/trash">
+          <Trash2 /> Trash
+        </Link>
+      </Button>
+    </div>
+  )
+}
