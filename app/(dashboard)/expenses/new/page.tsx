@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 import { requireUser } from "@/lib/auth/require-user"
 import { ensureDefaultExpenseCategories } from "@/server/repositories/expense-categories"
+import { listFinancialAccounts } from "@/server/repositories/financial-accounts"
 import { TransactionForm } from "@/components/expenses/transaction-form"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -17,6 +18,9 @@ export default function NewTransactionPage() {
 
 async function NewTransactionContent() {
   const user = await requireUser()
-  const categories = await ensureDefaultExpenseCategories(user.id)
-  return <TransactionForm categories={categories} />
+  const [categories, accounts] = await Promise.all([
+    ensureDefaultExpenseCategories(user.id),
+    listFinancialAccounts(user.id),
+  ])
+  return <TransactionForm categories={categories} accounts={accounts} />
 }

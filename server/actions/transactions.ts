@@ -19,6 +19,7 @@ const transactionSchema = z.object({
     .string()
     .refine((v) => parseAmountToMinor(v) !== null, "Enter a valid amount"),
   categoryId: z.string().uuid().optional().or(z.literal("")),
+  accountId: z.string().uuid().optional().or(z.literal("")),
   merchant: z.string().max(200).optional().or(z.literal("")),
   description: z.string().max(1000).optional().or(z.literal("")),
   transactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
@@ -44,6 +45,7 @@ function readFormFields(formData: FormData) {
     type: formData.get("type"),
     amount: formData.get("amount"),
     categoryId: formData.get("categoryId") || undefined,
+    accountId: formData.get("accountId") || undefined,
     merchant: formData.get("merchant") || undefined,
     description: formData.get("description") || undefined,
     transactionDate: formData.get("transactionDate"),
@@ -81,6 +83,7 @@ export async function createTransaction(
     type: parsed.data.type,
     amountMinor,
     categoryId: parsed.data.categoryId || null,
+    accountId: parsed.data.accountId || null,
     merchant: parsed.data.merchant || null,
     description: parsed.data.description || null,
     transactionDate: parsed.data.transactionDate,
@@ -91,6 +94,7 @@ export async function createTransaction(
 
   revalidateTag("vault-module-transactions", "max");
   revalidateTag("vault-module-budgets", "max");
+  revalidateTag("vault-module-financial-accounts", "max");
   revalidatePath("/expenses");
   return { status: "success" };
 }
@@ -115,6 +119,7 @@ export async function updateTransaction(
     type: parsed.data.type,
     amountMinor,
     categoryId: parsed.data.categoryId || null,
+    accountId: parsed.data.accountId || null,
     merchant: parsed.data.merchant || null,
     description: parsed.data.description || null,
     transactionDate: parsed.data.transactionDate,
@@ -127,6 +132,7 @@ export async function updateTransaction(
 
   revalidateTag("vault-module-transactions", "max");
   revalidateTag("vault-module-budgets", "max");
+  revalidateTag("vault-module-financial-accounts", "max");
   revalidatePath("/expenses");
   revalidatePath(`/expenses/${id}`);
   return { status: "success" };

@@ -27,6 +27,9 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BudgetFormDialog } from "@/components/budgets/budget-form-dialog";
 import { CopyPreviousMonthButton } from "@/components/budgets/copy-previous-month-button";
+import { AddBudgetCategoryButton } from "@/components/budgets/add-budget-category-button";
+import { DeleteCategoryButton } from "@/components/budgets/delete-category-button";
+import { DeleteAllCategoriesButton } from "@/components/budgets/delete-all-categories-button";
 
 function parseMonthParam(month?: string) {
   if (month && /^\d{4}-\d{2}$/.test(month))
@@ -184,9 +187,15 @@ async function BudgetsContent({
       </Card>
 
       <div className="flex flex-col gap-2">
-        <h2 className="font-heading text-sm font-semibold text-muted-foreground">
-          Category budgets
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-heading text-sm font-semibold text-muted-foreground">
+            Category budgets
+          </h2>
+          <div className="flex gap-1">
+            <AddBudgetCategoryButton />
+            {categories.length > 0 && <DeleteAllCategoriesButton />}
+          </div>
+        </div>
         {categories.map((category) => {
           const budget = budgetByCategoryId.get(category.id);
           const categoryUsage = budget
@@ -206,14 +215,17 @@ async function BudgetsContent({
                       </p>
                     )}
                   </div>
-                  <BudgetFormDialog
-                    categoryId={category.id}
-                    categoryName={category.name}
-                    month={month}
-                    year={year}
-                    existingLimitMinor={budget?.limitMinor}
-                    existingThreshold={budget?.alertThresholdPercent}
-                  />
+                  <div className="flex items-center gap-1">
+                    <BudgetFormDialog
+                      categoryId={category.id}
+                      categoryName={category.name}
+                      month={month}
+                      year={year}
+                      existingLimitMinor={budget?.limitMinor}
+                      existingThreshold={budget?.alertThresholdPercent}
+                    />
+                    <DeleteCategoryButton categoryId={category.id} categoryName={category.name} />
+                  </div>
                 </div>
                 {budget && categoryUsage && (
                   <Progress

@@ -15,6 +15,13 @@ export const users = pgTable("users", {
   timezone: text("timezone").notNull().default("UTC"),
   theme: themePreferenceEnum("theme").notNull().default("system"),
   twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+  // Tracks whether the one-time default-category seeding has already run,
+  // separately from "does this user currently have zero categories" — a
+  // user who deletes everything on purpose should stay at zero, not get
+  // silently reseeded on their next page load. See
+  // ensureDefaultExpenseCategories / ensureDefaultVaultCategories.
+  expenseCategoriesSeeded: boolean("expense_categories_seeded").notNull().default(false),
+  vaultCategoriesSeeded: boolean("vault_categories_seeded").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),

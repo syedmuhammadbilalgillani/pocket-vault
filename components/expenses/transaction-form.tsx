@@ -4,7 +4,7 @@ import { useActionState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 
-import type { ExpenseCategory } from "@/lib/database/schema"
+import type { ExpenseCategory, FinancialAccount } from "@/lib/database/schema"
 import {
   createTransaction,
   updateTransaction,
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
+import { CategorySelect } from "@/components/expenses/category-select"
 
 const initialState: TransactionFormState = { status: "idle" }
 
@@ -43,15 +44,18 @@ const PAYMENT_METHOD_OPTIONS = [
 
 export function TransactionForm({
   categories,
+  accounts,
   transactionId,
   defaultValues,
 }: {
   categories: ExpenseCategory[]
+  accounts?: FinancialAccount[]
   transactionId?: string
   defaultValues?: {
     type: string
     amount: string
     categoryId?: string | null
+    accountId?: string | null
     merchant?: string | null
     description?: string | null
     transactionDate: string
@@ -116,19 +120,31 @@ export function TransactionForm({
 
             <Field>
               <FieldLabel htmlFor="categoryId">Category</FieldLabel>
-              <Select name="categoryId" defaultValue={defaultValues?.categoryId ?? undefined}>
-                <SelectTrigger id="categoryId" className="w-full">
-                  <SelectValue placeholder="No category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategorySelect
+                id="categoryId"
+                name="categoryId"
+                categories={categories}
+                defaultValue={defaultValues?.categoryId}
+              />
             </Field>
+
+            {accounts && accounts.length > 0 && (
+              <Field>
+                <FieldLabel htmlFor="accountId">Account</FieldLabel>
+                <Select name="accountId" defaultValue={defaultValues?.accountId ?? undefined}>
+                  <SelectTrigger id="accountId" className="w-full">
+                    <SelectValue placeholder="No account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
 
             <Field>
               <FieldLabel htmlFor="paymentMethod">Payment method</FieldLabel>

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { requireUser } from "@/lib/auth/require-user"
 import { getTransaction } from "@/server/repositories/transactions"
 import { listExpenseCategories } from "@/server/repositories/expense-categories"
+import { listFinancialAccounts } from "@/server/repositories/financial-accounts"
 import { minorToAmountString } from "@/lib/money"
 import { TransactionForm } from "@/components/expenses/transaction-form"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -26,16 +27,21 @@ async function EditTransactionContent({ params }: { params: Promise<{ id: string
   const transaction = await getTransaction(user.id, id)
   if (!transaction) notFound()
 
-  const categories = await listExpenseCategories(user.id)
+  const [categories, accounts] = await Promise.all([
+    listExpenseCategories(user.id),
+    listFinancialAccounts(user.id),
+  ])
 
   return (
     <TransactionForm
       categories={categories}
+      accounts={accounts}
       transactionId={transaction.id}
       defaultValues={{
         type: transaction.type,
         amount: minorToAmountString(transaction.amountMinor),
         categoryId: transaction.categoryId,
+        accountId: transaction.accountId,
         merchant: transaction.merchant,
         description: transaction.description,
         transactionDate: transaction.transactionDate,

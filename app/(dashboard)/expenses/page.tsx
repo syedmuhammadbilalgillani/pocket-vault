@@ -115,6 +115,11 @@ async function ExpensesContent({
           </p>
         </div>
         <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings/accounts">
+              <Wallet /> Accounts
+            </Link>
+          </Button>
           <PasswordConfirmExportButton
             exportType="transactions"
             label="CSV"
