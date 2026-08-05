@@ -15,6 +15,15 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Enables Partial Prerendering: static shell prerendered, with
+  // cookie/session-dependent content wrapped in <Suspense> streamed at
+  // request time instead. Piloting on the vault module first — see
+  // memory: pocket-vault-deferred-phase2 for rollout status across the
+  // rest of the app. This is NOT the same as `dynamic = "force-static"`,
+  // which bakes the *entire* page (including auth-gated content) into one
+  // shared static response — that combination caused a real bug earlier
+  // in this project and must not be reintroduced.
+  cacheComponents: true,
   async headers() {
     return [
       {
@@ -26,7 +35,8 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+            value:
+              "camera=(), microphone=(), geolocation=(), interest-cohort=()",
           },
           {
             key: "Strict-Transport-Security",
@@ -35,6 +45,11 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
+  },
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
   },
 };
 

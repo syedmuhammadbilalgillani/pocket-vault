@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Pencil } from "lucide-react"
@@ -9,11 +10,34 @@ import { decryptVaultItem } from "@/lib/crypto/vault-item-crypto"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { RevealSecret } from "@/components/vault/reveal-secret"
 import { CopyButton } from "@/components/vault/copy-button"
 import { DeleteItemButton } from "@/components/vault/delete-item-button"
 
-export default async function VaultItemPage({ params }: { params: Promise<{ id: string }> }) {
+// `params` and the session cookie (via requireUser) are both runtime APIs,
+// so almost this entire page is per-request content — there's little to
+// prerender statically here, but it still follows the same Suspense
+// boundary pattern as the rest of the vault module for consistency. See
+// app/(dashboard)/vault/page.tsx for the fuller static-shell example.
+export default function VaultItemPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<VaultItemSkeleton />}>
+      <VaultItemContent params={params} />
+    </Suspense>
+  )
+}
+
+function VaultItemSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-40 w-full" />
+    </div>
+  )
+}
+
+async function VaultItemContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const user = await requireUser()
 

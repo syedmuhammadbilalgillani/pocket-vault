@@ -6,7 +6,30 @@ import { Card, CardContent } from "@/components/ui/card"
 import { NotificationRow } from "@/components/notifications/notification-row"
 import { MarkAllReadButton } from "@/components/notifications/mark-all-read-button"
 
-export default async function NotificationsPage() {
+import { Suspense } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+
+export default function NotificationsPage() {
+  return (
+    <Suspense fallback={<NotificationsSkeleton />}>
+      <NotificationsContent />
+    </Suspense>
+  )
+}
+
+function NotificationsSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-9 w-24" />
+      </div>
+      <Skeleton className="h-32 w-full" />
+    </div>
+  )
+}
+
+async function NotificationsContent() {
   const user = await requireUser()
   const notifications = await listNotifications(user.id)
   const hasUnread = notifications.some((n) => !n.readAt)

@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Pencil } from "lucide-react"
@@ -9,6 +10,7 @@ import { formatMinor } from "@/lib/money"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { DeleteTransactionButton } from "@/components/expenses/delete-transaction-button"
 
 const TYPE_LABEL: Record<string, string> = {
@@ -18,7 +20,35 @@ const TYPE_LABEL: Record<string, string> = {
   transfer: "Transfer",
 }
 
-export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<TransactionSkeleton />}>
+      <TransactionContent params={params} />
+    </Suspense>
+  )
+}
+
+function TransactionSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-8 w-32" />
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+async function TransactionContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const user = await requireUser()
 

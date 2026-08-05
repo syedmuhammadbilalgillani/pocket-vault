@@ -1,10 +1,38 @@
+import { Suspense } from "react"
 import Link from "next/link"
 
 import { verifyEmail } from "@/server/actions/verify-email"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 
-export default async function VerifyEmailPage({
+export default function VerifyEmailPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>
+}) {
+  return (
+    <Suspense fallback={<VerifyEmailSkeleton />}>
+      <VerifyEmailContent searchParams={searchParams} />
+    </Suspense>
+  )
+}
+
+function VerifyEmailSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-6 w-32 mb-2" />
+        <Skeleton className="h-4 w-64" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-10 w-full" />
+      </CardContent>
+    </Card>
+  )
+}
+
+async function VerifyEmailContent({
   searchParams,
 }: {
   searchParams: Promise<{ token?: string }>

@@ -5,7 +5,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PasswordConfirmExportButton } from "@/components/exports/password-confirm-export-button"
 import { DeleteAccountForm } from "@/components/settings/delete-account-form"
 
-export default async function DataSettingsPage() {
+import { Suspense } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+
+export default function DataSettingsPage() {
+  return (
+    <Suspense fallback={<DataSettingsSkeleton />}>
+      <DataSettingsContent />
+    </Suspense>
+  )
+}
+
+function DataSettingsSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
+      <Skeleton className="h-8 w-32" />
+      <Skeleton className="h-48 w-full" />
+    </div>
+  )
+}
+
+async function DataSettingsContent() {
   await requireUser()
 
   return (

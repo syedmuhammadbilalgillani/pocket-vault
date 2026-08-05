@@ -1,15 +1,22 @@
+import { Suspense } from "react"
 import { requireUser } from "@/lib/auth/require-user"
 import { ensureDefaultExpenseCategories } from "@/server/repositories/expense-categories"
 import { TransactionForm } from "@/components/expenses/transaction-form"
+import { Skeleton } from "@/components/ui/skeleton"
 
-export default async function NewTransactionPage() {
-  const user = await requireUser()
-  const categories = await ensureDefaultExpenseCategories(user.id)
-
+export default function NewTransactionPage() {
   return (
     <div className="mx-auto w-full max-w-lg">
       <h1 className="mb-4 font-heading text-xl font-semibold">Add transaction</h1>
-      <TransactionForm categories={categories} />
+      <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+        <NewTransactionContent />
+      </Suspense>
     </div>
   )
+}
+
+async function NewTransactionContent() {
+  const user = await requireUser()
+  const categories = await ensureDefaultExpenseCategories(user.id)
+  return <TransactionForm categories={categories} />
 }

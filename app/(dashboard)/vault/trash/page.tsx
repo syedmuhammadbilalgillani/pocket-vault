@@ -7,7 +7,30 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { RestoreItemButton } from "@/components/vault/restore-item-button"
 
-export default async function VaultTrashPage() {
+import { Suspense } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+
+export default function VaultTrashPage() {
+  return (
+    <Suspense fallback={<VaultTrashSkeleton />}>
+      <VaultTrashContent />
+    </Suspense>
+  )
+}
+
+function VaultTrashSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-8 w-24" />
+      </div>
+      <Skeleton className="h-32 w-full" />
+    </div>
+  )
+}
+
+async function VaultTrashContent() {
   const user = await requireUser()
   const items = await listTrashedVaultItems(user.id)
 

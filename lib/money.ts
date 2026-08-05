@@ -3,19 +3,21 @@
 // convert between that and a human-facing decimal string.
 
 export function parseAmountToMinor(input: string): number | null {
-  const trimmed = input.trim().replace(/,/g, "")
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null
+  const trimmed = input.trim().replace(/,/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
 
-  const [whole, fraction = ""] = trimmed.split(".")
-  const cents = (fraction + "00").slice(0, 2)
-  return Number(whole) * 100 + Number(cents)
+  const [whole, fraction = ""] = trimmed.split(".");
+  const cents = (fraction + "00").slice(0, 2);
+  return Number(whole) * 100 + Number(cents);
 }
 
-export function formatMinor(amountMinor: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amountMinor / 100)
+export function formatMinor(amountMinor: number, currency = "PKR"): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
+    amountMinor / 100,
+  );
 }
 
 // For prefilling an editable amount input — plain "12.34", no currency symbol.
 export function minorToAmountString(amountMinor: number): string {
-  return (amountMinor / 100).toFixed(2)
+  return (amountMinor / 100).toFixed(2);
 }

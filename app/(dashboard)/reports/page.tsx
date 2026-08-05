@@ -35,7 +35,38 @@ function ChangeIndicator({ percent }: { percent: number | null }) {
   )
 }
 
-export default async function ReportsPage({
+import { Suspense } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+
+export default function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>
+}) {
+  return (
+    <Suspense fallback={<ReportsSkeleton />}>
+      <ReportsContent searchParams={searchParams} />
+    </Suspense>
+  )
+}
+
+function ReportsSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-9 w-24" />
+      </div>
+      <div className="grid gap-3 grid-cols-2">
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-20 w-full" />
+      </div>
+      <Skeleton className="h-[300px] w-full" />
+    </div>
+  )
+}
+
+async function ReportsContent({
   searchParams,
 }: {
   searchParams: Promise<{ month?: string }>
