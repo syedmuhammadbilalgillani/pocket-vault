@@ -89,9 +89,7 @@ export default async function ReportsPage({
           exportType="transactions"
           label="Export CSV"
           description="Exports contain your financial data — confirm it's you before downloading."
-          buildUrl={(token) =>
-            `/api/exports/transactions?month=${format(current, "yyyy-MM")}&token=${encodeURIComponent(token)}`
-          }
+          baseUrl={`/api/exports/transactions?month=${format(current, "yyyy-MM")}`}
         />
       </div>
 

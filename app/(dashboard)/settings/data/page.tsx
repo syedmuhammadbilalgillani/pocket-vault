@@ -22,15 +22,13 @@ export default async function DataSettingsPage() {
             exportType="transactions"
             label="Export expenses (this month)"
             description="Exports contain your financial data — confirm it's you before downloading."
-            buildUrl={(token) =>
-              `/api/exports/transactions?month=${format(new Date(), "yyyy-MM")}&token=${encodeURIComponent(token)}`
-            }
+            baseUrl={`/api/exports/transactions?month=${format(new Date(), "yyyy-MM")}`}
           />
           <PasswordConfirmExportButton
             exportType="vault"
             label="Export vault backup"
             description="This downloads an encrypted backup — passwords stay encrypted in the file. Confirm it's you before downloading."
-            buildUrl={(token) => `/api/exports/vault?token=${encodeURIComponent(token)}`}
+            baseUrl="/api/exports/vault"
           />
         </CardContent>
       </Card>

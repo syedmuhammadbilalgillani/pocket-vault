@@ -64,9 +64,7 @@ export default async function ExpensesPage({
             exportType="transactions"
             label="CSV"
             description="Exports contain your financial data — confirm it's you before downloading."
-            buildUrl={(token) =>
-              `/api/exports/transactions?month=${format(current, "yyyy-MM")}&token=${encodeURIComponent(token)}`
-            }
+            baseUrl={`/api/exports/transactions?month=${format(current, "yyyy-MM")}`}
           />
           <Button asChild size="sm">
             <Link href="/expenses/new">

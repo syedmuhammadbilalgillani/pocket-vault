@@ -96,7 +96,7 @@ export default async function VaultPage({
           exportType="vault"
           label="Export backup"
           description="This downloads an encrypted backup — passwords stay encrypted in the file. Confirm it's you before downloading."
-          buildUrl={(token) => `/api/exports/vault?token=${encodeURIComponent(token)}`}
+          baseUrl="/api/exports/vault"
         />
       </div>
     </div>

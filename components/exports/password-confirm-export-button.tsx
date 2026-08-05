@@ -17,12 +17,16 @@ import {
 
 export function PasswordConfirmExportButton({
   exportType,
-  buildUrl,
+  baseUrl,
   label,
   description,
 }: {
   exportType: "transactions" | "vault"
-  buildUrl: (token: string) => string
+  // Base download URL, without the token query param — e.g.
+  // "/api/exports/transactions?month=2026-08". A function prop can't be
+  // passed from a Server Component to a Client Component (only "use
+  // server" actions can), so the token is appended here instead.
+  baseUrl: string
   label: string
   description: string
 }) {
@@ -44,7 +48,8 @@ export function PasswordConfirmExportButton({
       return
     }
 
-    window.location.href = buildUrl(result.token)
+    const separator = baseUrl.includes("?") ? "&" : "?"
+    window.location.href = `${baseUrl}${separator}token=${encodeURIComponent(result.token)}`
     setOpen(false)
     setPassword("")
   }

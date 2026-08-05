@@ -2,3 +2,11 @@ allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
+
+# Forces patched versions of transitive dependencies vendored by `next`
+# (sharp's image-optimization pipeline, postcss's build tooling) — see
+# `pnpm audit`. Both are build/server tooling only, not shipped to the
+# client bundle, so overriding is low-risk.
+overrides:
+  sharp: ">=0.35.0"
+  postcss: ">=8.5.23"
