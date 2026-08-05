@@ -132,7 +132,7 @@ export function RecurringRuleForm({
                 max={365}
                 defaultValue={defaultValues?.interval ?? 1}
               />
-              <FieldDescription>e.g. "2" with Weekly means every 2 weeks.</FieldDescription>
+              <FieldDescription>e.g. &quot;2&quot; with Weekly means every 2 weeks.</FieldDescription>
             </Field>
 
             <Field>
