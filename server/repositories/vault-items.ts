@@ -1,68 +1,117 @@
-import "server-only"
-import { and, count, desc, eq, ilike, isNull, isNotNull, lt } from "drizzle-orm"
+import "server-only";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  ilike,
+  isNull,
+  isNotNull,
+  lt,
+} from "drizzle-orm";
+import { unstable_cache, revalidateTag } from "next/cache";
 
-import { db } from "@/lib/database/connection"
-import { vaultItems } from "@/lib/database/schema"
+import { db } from "@/lib/database/connection";
+import { vaultItems } from "@/lib/database/schema";
 
-export async function countVaultItems(userId: string) {
-  const [row] = await db
-    .select({ count: count() })
-    .from(vaultItems)
-    .where(and(eq(vaultItems.userId, userId), isNull(vaultItems.deletedAt)))
-  return row?.count ?? 0
-}
+export const countVaultItems = unstable_cache(
+  async (userId: string) => {
+    const [row] = await db
+      .select({ count: count() })
+      .from(vaultItems)
+      .where(and(eq(vaultItems.userId, userId), isNull(vaultItems.deletedAt)));
+    return row?.count ?? 0;
+  },
+  ["countVaultItems"],
+  {
+    tags: ["vault-module-vault-items"],
+  },
+);
 
 // Every query here is scoped by userId — this is the enforcement point for
 // "the requested record belongs to the authenticated user" (roadmap 7.3).
 // Callers must always pass the userId from requireUser(), never a userId
 // read from client input.
 
-export async function listVaultItems(userId: string, opts?: { search?: string; categoryId?: string }) {
-  const conditions = [eq(vaultItems.userId, userId), isNull(vaultItems.deletedAt)]
+export const listVaultItems = unstable_cache(
+  async (userId: string, opts?: { search?: string; categoryId?: string }) => {
+    const conditions = [
+      eq(vaultItems.userId, userId),
+      isNull(vaultItems.deletedAt),
+    ];
 
-  if (opts?.categoryId) {
-    conditions.push(eq(vaultItems.categoryId, opts.categoryId))
-  }
+    if (opts?.categoryId) {
+      conditions.push(eq(vaultItems.categoryId, opts.categoryId));
+    }
 
-  if (opts?.search) {
-    conditions.push(ilike(vaultItems.title, `%${opts.search}%`))
-  }
+    if (opts?.search) {
+      conditions.push(ilike(vaultItems.title, `%${opts.search}%`));
+    }
 
-  return db
-    .select()
-    .from(vaultItems)
-    .where(and(...conditions))
-    .orderBy(desc(vaultItems.isFavorite), desc(vaultItems.updatedAt))
-}
+    return db
+      .select()
+      .from(vaultItems)
+      .where(and(...conditions))
+      .orderBy(desc(vaultItems.isFavorite), desc(vaultItems.updatedAt));
+  },
+  ["listVaultItems"],
+  {
+    tags: ["vault-module-vault-items"],
+  },
+);
 
-export async function listTrashedVaultItems(userId: string) {
-  return db
-    .select()
-    .from(vaultItems)
-    .where(and(eq(vaultItems.userId, userId), isNotNull(vaultItems.deletedAt)))
-    .orderBy(desc(vaultItems.deletedAt))
-}
+export const listTrashedVaultItems = unstable_cache(
+  async (userId: string) => {
+    return db
+      .select()
+      .from(vaultItems)
+      .where(
+        and(eq(vaultItems.userId, userId), isNotNull(vaultItems.deletedAt)),
+      )
+      .orderBy(desc(vaultItems.deletedAt));
+  },
+  ["listTrashedVaultItems"],
+  {
+    tags: ["vault-module-vault-items"],
+  },
+);
 
-export async function getVaultItem(userId: string, id: string) {
-  const [item] = await db
-    .select()
-    .from(vaultItems)
-    .where(and(eq(vaultItems.id, id), eq(vaultItems.userId, userId), isNull(vaultItems.deletedAt)))
-    .limit(1)
+export const getVaultItem = unstable_cache(
+  async (userId: string, id: string) => {
+    const [item] = await db
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.id, id),
+          eq(vaultItems.userId, userId),
+          isNull(vaultItems.deletedAt),
+        ),
+      )
+      .limit(1);
 
-  return item ?? null
-}
+    return item ?? null;
+  },
+  ["getVaultItem"],
+  {
+    tags: ["vault-module-vault-items"],
+  },
+);
 
 export async function insertVaultItem(
   userId: string,
-  values: Omit<typeof vaultItems.$inferInsert, "userId" | "id" | "createdAt" | "updatedAt" | "deletedAt">,
+  values: Omit<
+    typeof vaultItems.$inferInsert,
+    "userId" | "id" | "createdAt" | "updatedAt" | "deletedAt"
+  >,
 ) {
   const [item] = await db
     .insert(vaultItems)
     .values({ userId, ...values })
-    .returning()
+    .returning();
 
-  return item
+  revalidateTag("vault-module-vault-items", "max");
+  return item;
 }
 
 export async function updateVaultItemRow(
@@ -73,41 +122,74 @@ export async function updateVaultItemRow(
   const [item] = await db
     .update(vaultItems)
     .set({ ...values, updatedAt: new Date() })
-    .where(and(eq(vaultItems.id, id), eq(vaultItems.userId, userId), isNull(vaultItems.deletedAt)))
-    .returning()
+    .where(
+      and(
+        eq(vaultItems.id, id),
+        eq(vaultItems.userId, userId),
+        isNull(vaultItems.deletedAt),
+      ),
+    )
+    .returning();
 
-  return item ?? null
+  revalidateTag("vault-module-vault-items", "max");
+  return item ?? null;
 }
 
 export async function softDeleteVaultItem(userId: string, id: string) {
   const [item] = await db
     .update(vaultItems)
     .set({ deletedAt: new Date() })
-    .where(and(eq(vaultItems.id, id), eq(vaultItems.userId, userId), isNull(vaultItems.deletedAt)))
-    .returning({ id: vaultItems.id })
+    .where(
+      and(
+        eq(vaultItems.id, id),
+        eq(vaultItems.userId, userId),
+        isNull(vaultItems.deletedAt),
+      ),
+    )
+    .returning({ id: vaultItems.id });
 
-  return item ?? null
+  revalidateTag("vault-module-vault-items", "max");
+  return item ?? null;
 }
 
 export async function restoreVaultItem(userId: string, id: string) {
   const [item] = await db
     .update(vaultItems)
     .set({ deletedAt: null })
-    .where(and(eq(vaultItems.id, id), eq(vaultItems.userId, userId), isNotNull(vaultItems.deletedAt)))
-    .returning({ id: vaultItems.id })
+    .where(
+      and(
+        eq(vaultItems.id, id),
+        eq(vaultItems.userId, userId),
+        isNotNull(vaultItems.deletedAt),
+      ),
+    )
+    .returning({ id: vaultItems.id });
 
-  return item ?? null
+  revalidateTag("vault-module-vault-items", "max");
+  return item ?? null;
 }
 
-export async function getTrashedVaultItem(userId: string, id: string) {
-  const [item] = await db
-    .select()
-    .from(vaultItems)
-    .where(and(eq(vaultItems.id, id), eq(vaultItems.userId, userId), isNotNull(vaultItems.deletedAt)))
-    .limit(1)
+export const getTrashedVaultItem = unstable_cache(
+  async (userId: string, id: string) => {
+    const [item] = await db
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.id, id),
+          eq(vaultItems.userId, userId),
+          isNotNull(vaultItems.deletedAt),
+        ),
+      )
+      .limit(1);
 
-  return item ?? null
-}
+    return item ?? null;
+  },
+  ["getTrashedVaultItem"],
+  {
+    tags: ["vault-module-vault-items"],
+  },
+);
 
 // System-level, no userId scope — intentional, same exception as
 // getDueRecurringRules(). Backs the retention cron job
@@ -116,7 +198,11 @@ export async function getTrashedVaultItem(userId: string, id: string) {
 export async function purgeOldTrashedVaultItems(olderThan: Date) {
   const deleted = await db
     .delete(vaultItems)
-    .where(and(isNotNull(vaultItems.deletedAt), lt(vaultItems.deletedAt, olderThan)))
-    .returning({ id: vaultItems.id })
-  return deleted.length
+    .where(
+      and(isNotNull(vaultItems.deletedAt), lt(vaultItems.deletedAt, olderThan)),
+    )
+    .returning({ id: vaultItems.id });
+
+  revalidateTag("vault-module-vault-items", "max");
+  return deleted.length;
 }
