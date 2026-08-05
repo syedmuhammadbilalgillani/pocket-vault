@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, parse } from "date-fns"
-import { ChevronLeft, ChevronRight, Download, Plus, Wallet } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus, Wallet } from "lucide-react"
 
 import { requireUser } from "@/lib/auth/require-user"
 import { listTransactions, getMonthlyTotals } from "@/server/repositories/transactions"
@@ -9,6 +9,7 @@ import { formatMinor } from "@/lib/money"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { PasswordConfirmExportButton } from "@/components/exports/password-confirm-export-button"
 import { CategoryFilter } from "@/components/expenses/category-filter"
 import { DeleteTransactionButton } from "@/components/expenses/delete-transaction-button"
 import { DuplicateTransactionButton } from "@/components/expenses/duplicate-transaction-button"
@@ -59,11 +60,14 @@ export default async function ExpensesPage({
           <p className="text-sm text-muted-foreground">Track spending and income.</p>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/api/exports/transactions?month=${format(current, "yyyy-MM")}`}>
-              <Download /> CSV
-            </Link>
-          </Button>
+          <PasswordConfirmExportButton
+            exportType="transactions"
+            label="CSV"
+            description="Exports contain your financial data — confirm it's you before downloading."
+            buildUrl={(token) =>
+              `/api/exports/transactions?month=${format(current, "yyyy-MM")}&token=${encodeURIComponent(token)}`
+            }
+          />
           <Button asChild size="sm">
             <Link href="/expenses/new">
               <Plus /> Add

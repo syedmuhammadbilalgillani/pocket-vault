@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { PasswordConfirmExportButton } from "@/components/exports/password-confirm-export-button"
 
 export default async function VaultPage({
   searchParams,
@@ -85,11 +86,19 @@ export default async function VaultPage({
         </ul>
       )}
 
-      <Button asChild variant="ghost" size="sm" className="self-start text-muted-foreground">
-        <Link href="/vault/trash">
-          <Trash2 /> Trash
-        </Link>
-      </Button>
+      <div className="flex justify-between">
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+          <Link href="/vault/trash">
+            <Trash2 /> Trash
+          </Link>
+        </Button>
+        <PasswordConfirmExportButton
+          exportType="vault"
+          label="Export backup"
+          description="This downloads an encrypted backup — passwords stay encrypted in the file. Confirm it's you before downloading."
+          buildUrl={(token) => `/api/exports/vault?token=${encodeURIComponent(token)}`}
+        />
+      </div>
     </div>
   )
 }

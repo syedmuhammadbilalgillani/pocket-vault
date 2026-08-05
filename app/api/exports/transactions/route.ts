@@ -2,14 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { format, startOfMonth, endOfMonth, parse } from "date-fns"
 
 import { requireUser } from "@/lib/auth/require-user"
+import { verifyExportToken } from "@/lib/auth/export-token"
 import { listTransactions } from "@/server/repositories/transactions"
 import { listExpenseCategories } from "@/server/repositories/expense-categories"
 import { minorToAmountString } from "@/lib/money"
 import { logAuditEvent } from "@/lib/auth/audit"
-
-// TODO: require reauthentication before export per roadmap 6.9/7.3 —
-// deferred along with the rest of the reauthentication flow (see memory:
-// pocket-vault-deferred-phase2).
 
 function csvEscape(value: string): string {
   if (/[",\n]/.test(value)) {
@@ -20,6 +17,11 @@ function csvEscape(value: string): string {
 
 export async function GET(request: NextRequest) {
   const user = await requireUser()
+
+  const token = request.nextUrl.searchParams.get("token") ?? ""
+  if (!verifyExportToken(token, user.id, "transactions")) {
+    return NextResponse.json({ error: "Missing or expired export confirmation" }, { status: 401 })
+  }
 
   const monthParam = request.nextUrl.searchParams.get("month")
   const current =

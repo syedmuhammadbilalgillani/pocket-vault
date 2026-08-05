@@ -1,5 +1,5 @@
 import "server-only"
-import { and, asc, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, ilike, isNull, isNotNull, lt, lte, or, sql } from "drizzle-orm"
 
 import { db } from "@/lib/database/connection"
 import { transactions } from "@/lib/database/schema"
@@ -139,4 +139,16 @@ export async function getDailySpending(userId: string, monthStart: string, month
     .orderBy(asc(transactions.transactionDate))
 
   return rows.map((r) => ({ date: r.date, totalMinor: Number(r.total) }))
+}
+
+// System-level, no userId scope — same intentional exception as
+// getDueRecurringRules() and purgeOldTrashedVaultItems(). Backs the
+// retention cron job, purging soft-deleted transactions past the
+// retention window across every account.
+export async function purgeOldDeletedTransactions(olderThan: Date) {
+  const deleted = await db
+    .delete(transactions)
+    .where(and(isNotNull(transactions.deletedAt), lt(transactions.deletedAt, olderThan)))
+    .returning({ id: transactions.id })
+  return deleted.length
 }

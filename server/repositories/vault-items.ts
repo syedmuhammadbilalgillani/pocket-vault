@@ -1,5 +1,5 @@
 import "server-only"
-import { and, count, desc, eq, ilike, isNull, isNotNull } from "drizzle-orm"
+import { and, count, desc, eq, ilike, isNull, isNotNull, lt } from "drizzle-orm"
 
 import { db } from "@/lib/database/connection"
 import { vaultItems } from "@/lib/database/schema"
@@ -107,4 +107,16 @@ export async function getTrashedVaultItem(userId: string, id: string) {
     .limit(1)
 
   return item ?? null
+}
+
+// System-level, no userId scope — intentional, same exception as
+// getDueRecurringRules(). Backs the retention cron job
+// (app/api/cron/retention/route.ts), which permanently purges vault items
+// that have sat in trash past the retention window, across every account.
+export async function purgeOldTrashedVaultItems(olderThan: Date) {
+  const deleted = await db
+    .delete(vaultItems)
+    .where(and(isNotNull(vaultItems.deletedAt), lt(vaultItems.deletedAt, olderThan)))
+    .returning({ id: vaultItems.id })
+  return deleted.length
 }
