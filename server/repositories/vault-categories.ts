@@ -3,7 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 
 import { db } from "@/lib/database/connection";
-import { vaultCategories } from "@/lib/database/schema";
+import { vaultCategories, users } from "@/lib/database/schema";
 
 export const listVaultCategories = unstable_cache(
   async (userId: string) => {
@@ -57,14 +57,26 @@ export const SUGGESTED_VAULT_CATEGORIES = [
   "Other",
 ];
 
+// Seeded exactly once per user, tracked via users.vaultCategoriesSeeded —
+// not by "does this user currently have zero categories" (see the same
+// fix and rationale in server/repositories/expense-categories.ts).
 export async function ensureDefaultVaultCategories(userId: string) {
-  const existing = await listVaultCategories(userId);
-  if (existing.length > 0) return existing;
+  const [user] = await db
+    .select({ vaultCategoriesSeeded: users.vaultCategoriesSeeded })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (user?.vaultCategoriesSeeded) {
+    return listVaultCategories(userId);
+  }
 
   const created = await db
     .insert(vaultCategories)
     .values(SUGGESTED_VAULT_CATEGORIES.map((name) => ({ userId, name })))
     .returning();
+
+  await db.update(users).set({ vaultCategoriesSeeded: true }).where(eq(users.id, userId));
 
   revalidateTag("vault-module-vault-categories", "max");
   return created;
