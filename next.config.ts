@@ -2,12 +2,6 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
-// Next.js Fast Refresh/HMR needs 'unsafe-eval' in dev; production doesn't.
-// script-src still needs 'unsafe-inline' because the App Router streams
-// small inline bootstrap/hydration scripts in the initial HTML — a
-// nonce-based CSP would remove that but requires threading a per-request
-// nonce through proxy.ts into every page, which is future hardening work,
-// not something to bolt on without testing every page against it.
 const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -18,9 +12,7 @@ const contentSecurityPolicy = [
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-]
-  .join("; ")
-  .trim();
+].join("; ");
 
 const nextConfig: NextConfig = {
   async headers() {
@@ -30,8 +22,6 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Content-Security-Policy", value: contentSecurityPolicy },
           { key: "X-Content-Type-Options", value: "nosniff" },
-          // Redundant with frame-ancestors above for CSP-aware browsers,
-          // kept for the older ones that only honor X-Frame-Options.
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
