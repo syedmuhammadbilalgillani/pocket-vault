@@ -32,6 +32,9 @@ export const budgets = pgTable(
     rolloverEnabled: boolean("rollover_enabled").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Soft-delete, added for the native-app sync engine — see the matching
+    // comment on expenseCategories in lib/database/schema/expenses.ts.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     index("budgets_user_id_idx").on(table.userId),

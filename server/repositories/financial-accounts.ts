@@ -1,5 +1,5 @@
 import "server-only"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm"
 import { unstable_cache, revalidateTag } from "next/cache"
 
 import { db } from "@/lib/database/connection"
@@ -7,7 +7,7 @@ import { financialAccounts, transactions } from "@/lib/database/schema"
 
 export const listFinancialAccounts = unstable_cache(
   async (userId: string, includeArchived = false) => {
-    const conditions = [eq(financialAccounts.userId, userId)]
+    const conditions = [eq(financialAccounts.userId, userId), isNull(financialAccounts.deletedAt)]
     if (!includeArchived) conditions.push(eq(financialAccounts.isArchived, false))
 
     return db
@@ -24,7 +24,13 @@ export async function getFinancialAccount(userId: string, id: string) {
   const [row] = await db
     .select()
     .from(financialAccounts)
-    .where(and(eq(financialAccounts.id, id), eq(financialAccounts.userId, userId)))
+    .where(
+      and(
+        eq(financialAccounts.id, id),
+        eq(financialAccounts.userId, userId),
+        isNull(financialAccounts.deletedAt),
+      ),
+    )
     .limit(1)
   return row ?? null
 }
@@ -65,9 +71,13 @@ export async function archiveFinancialAccount(userId: string, id: string) {
   return updateFinancialAccountRow(userId, id, { isArchived: true })
 }
 
+// Soft-delete rather than a hard DELETE: past transactions reference this
+// account (ON DELETE SET NULL), and other devices need a tombstone to sync
+// against — see the deletedAt comment in lib/database/schema/expenses.ts.
 export async function deleteFinancialAccount(userId: string, id: string) {
   await db
-    .delete(financialAccounts)
+    .update(financialAccounts)
+    .set({ deletedAt: new Date() })
     .where(and(eq(financialAccounts.id, id), eq(financialAccounts.userId, userId)))
 
   revalidateTag("vault-module-financial-accounts", "max")
@@ -97,9 +107,57 @@ export async function getAccountBalance(userId: string, accountId: string) {
   const [account] = await db
     .select({ openingBalanceMinor: financialAccounts.openingBalanceMinor })
     .from(financialAccounts)
-    .where(and(eq(financialAccounts.id, accountId), eq(financialAccounts.userId, userId)))
+    .where(
+      and(
+        eq(financialAccounts.id, accountId),
+        eq(financialAccounts.userId, userId),
+        isNull(financialAccounts.deletedAt),
+      ),
+    )
     .limit(1)
 
   const opening = account?.openingBalanceMinor ?? 0
   return opening + Number(row.credits) - Number(row.debits) + Number(row.transfers)
+}
+
+// --- Sync engine support (native-app) ---
+
+// Rows changed since the client's last pull cursor, soft-deletes included
+// so the client can tombstone them locally instead of them just vanishing
+// server-side with no trace.
+export async function listFinancialAccountsChangedSince(userId: string, since: Date) {
+  return db
+    .select()
+    .from(financialAccounts)
+    .where(
+      and(
+        eq(financialAccounts.userId, userId),
+        or(gt(financialAccounts.updatedAt, since), gt(financialAccounts.deletedAt, since)),
+      ),
+    )
+}
+
+// Applies a client-originated mutation keyed by the client-generated UUID.
+// Additive alongside insertFinancialAccount/updateFinancialAccountRow, which
+// stay exactly as they are for the existing web Server Action path — this
+// is only for /api/sync/push. Last-write-wins: a push older than what the
+// server already has is a no-op rather than clobbering newer data.
+export async function upsertFinancialAccountFromSync(
+  userId: string,
+  id: string,
+  values: Omit<typeof financialAccounts.$inferInsert, "id" | "userId">,
+  clientUpdatedAt: Date,
+) {
+  const [row] = await db
+    .insert(financialAccounts)
+    .values({ id, userId, ...values, updatedAt: clientUpdatedAt })
+    .onConflictDoUpdate({
+      target: financialAccounts.id,
+      set: { ...values, updatedAt: clientUpdatedAt },
+      setWhere: sql`${financialAccounts.userId} = ${userId} and ${financialAccounts.updatedAt} < ${clientUpdatedAt}`,
+    })
+    .returning()
+
+  revalidateTag("vault-module-financial-accounts", "max")
+  return row
 }

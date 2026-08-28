@@ -1,14 +1,10 @@
 import NextAuth, { CredentialsSignin } from "next-auth"
 import Credentials from "next-auth/providers/credentials"
-import { eq } from "drizzle-orm"
 import { z } from "zod"
 
-import { db } from "@/lib/database/connection"
-import { users } from "@/lib/database/schema"
-import { verifyPassword } from "@/lib/auth/password"
+import { authenticateWithPassword } from "@/lib/auth/authenticate"
 import { createSession, getActiveSession, touchSession } from "@/lib/auth/session-store"
 import { getClientIp, maskIpAddress, summarizeUserAgent } from "@/lib/auth/request-info"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/auth/rate-limit"
 import { logAuditEvent } from "@/lib/auth/audit"
 import "@/lib/auth/types"
 
@@ -47,55 +43,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { email, password } = parsed.data
 
         const ip = maskIpAddress(getClientIp(request))
-        const rateLimitKey = `login:${email.toLowerCase()}`
-        const ipRateLimitKey = `login-ip:${ip ?? "unknown"}`
+        const result = await authenticateWithPassword(email, password, ip)
 
-        if (
-          !checkRateLimit(rateLimitKey, RATE_LIMITS.loginPerAccount).allowed ||
-          !checkRateLimit(ipRateLimitKey, RATE_LIMITS.loginPerIp).allowed
-        ) {
-          await logAuditEvent({
-            eventType: "login.rate_limited",
-            ipAddressMasked: ip,
-            metadataRedacted: { email },
-          })
+        if (!result.ok) {
+          if (result.reason === "email_not_verified") throw new EmailNotVerifiedError()
           return null
         }
 
-        const [user] = await db
-          .select()
-          .from(users)
-          .where(eq(users.email, email.toLowerCase()))
-          .limit(1)
-
-        // A fixed, valid Argon2id hash with no corresponding real password.
-        // Used to run a comparison even when the account doesn't exist, so
-        // that path doesn't respond measurably faster (account enumeration
-        // prevention, roadmap 7.4).
-        const DUMMY_HASH =
-          "$argon2id$v=19$m=19456,t=2,p=1$m7JXEigh9CPUatCmDxNDSw$r/fbWipfc1H6jKs6QhQwNjAqbqeHAEHZf5Q87caNKKQ"
-
-        const passwordValid = await verifyPassword(user?.passwordHash ?? DUMMY_HASH, password)
-
-        if (!user || !passwordValid) {
-          await logAuditEvent({
-            userId: user?.id,
-            eventType: "login.failed",
-            ipAddressMasked: ip,
-            metadataRedacted: { email },
-          })
-          return null
-        }
-
-        if (!user.emailVerifiedAt) {
-          await logAuditEvent({
-            userId: user.id,
-            eventType: "login.unverified_email",
-            ipAddressMasked: ip,
-          })
-          throw new EmailNotVerifiedError()
-        }
-
+        const { user } = result
         const userAgent = summarizeUserAgent(request.headers.get("user-agent"))
         const { token } = await createSession(user.id, { ...userAgent, ipAddressMasked: ip })
 

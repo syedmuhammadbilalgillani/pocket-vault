@@ -1,16 +1,16 @@
 import "server-only";
-import { and, asc, eq, ilike } from "drizzle-orm";
+import { and, asc, eq, gt, ilike, isNull, or, sql } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 
 import { db } from "@/lib/database/connection";
-import { expenseCategories, users } from "@/lib/database/schema";
+import { budgets, expenseCategories, users } from "@/lib/database/schema";
 
 export const listExpenseCategories = unstable_cache(
   async (userId: string) => {
     return db
       .select()
       .from(expenseCategories)
-      .where(eq(expenseCategories.userId, userId))
+      .where(and(eq(expenseCategories.userId, userId), isNull(expenseCategories.deletedAt)))
       .orderBy(asc(expenseCategories.name));
   },
   ["listExpenseCategories"],
@@ -81,7 +81,13 @@ export async function getOrCreateExpenseCategory(userId: string, name: string) {
   const [existing] = await db
     .select()
     .from(expenseCategories)
-    .where(and(eq(expenseCategories.userId, userId), ilike(expenseCategories.name, trimmed)))
+    .where(
+      and(
+        eq(expenseCategories.userId, userId),
+        ilike(expenseCategories.name, trimmed),
+        isNull(expenseCategories.deletedAt),
+      ),
+    )
     .limit(1);
 
   if (existing) return existing;
@@ -95,31 +101,85 @@ export async function getOrCreateExpenseCategory(userId: string, name: string) {
   return created;
 }
 
-// Deleting a category CASCADEs to any budgets set for it (schema:
-// budgets.categoryId → onDelete cascade) but only SET NULLs on
-// transactions (schema: transactions.categoryId → onDelete set null) — so
-// past transactions survive as "Uncategorized," budgets for that category
-// don't. Callers must surface both consequences before confirming.
+// Soft-deletes the category (see the deletedAt comment in
+// lib/database/schema/expenses.ts — a hard DELETE leaves no tombstone for
+// the native-app sync engine to pull). Soft-deleting doesn't trigger the
+// schema's ON DELETE cascade/set-null FK actions (those only fire on a real
+// DELETE), so the two consequences they used to give us for free are
+// replicated explicitly here: budgets for this category are soft-deleted
+// too (matching the old cascade), while transactions keep their categoryId
+// as-is and just render against a deleted category (see listExpenseCategories'
+// isNull(deletedAt) filter) rather than snapping to "Uncategorized" — a
+// small, intentional behavior improvement, not a bug: historical
+// transactions keep their category context instead of losing it.
 export async function deleteExpenseCategory(userId: string, id: string) {
   await db
-    .delete(expenseCategories)
+    .update(budgets)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(budgets.categoryId, id), eq(budgets.userId, userId)));
+
+  await db
+    .update(expenseCategories)
+    .set({ deletedAt: new Date() })
     .where(and(eq(expenseCategories.id, id), eq(expenseCategories.userId, userId)));
 
   revalidateTag("vault-module-expense-categories", "max");
   revalidateTag("vault-module-budgets", "max");
 }
 
-// Same cascade consequences as deleteExpenseCategory, applied to every
-// category the user has (seeded and custom alike) — every budget tied to
-// a category is deleted, every transaction becomes uncategorized. The
-// server action requires typed confirmation before calling this.
+// Same consequences as deleteExpenseCategory, applied to every category the
+// user has (seeded and custom alike). The server action requires typed
+// confirmation before calling this.
 export async function deleteAllExpenseCategories(userId: string) {
+  await db
+    .update(budgets)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(budgets.userId, userId), isNull(budgets.deletedAt)));
+
   const deleted = await db
-    .delete(expenseCategories)
-    .where(eq(expenseCategories.userId, userId))
+    .update(expenseCategories)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(expenseCategories.userId, userId), isNull(expenseCategories.deletedAt)))
     .returning({ id: expenseCategories.id });
 
   revalidateTag("vault-module-expense-categories", "max");
   revalidateTag("vault-module-budgets", "max");
   return deleted.length;
+}
+
+// --- Sync engine support (native-app) ---
+
+export async function listExpenseCategoriesChangedSince(userId: string, since: Date) {
+  return db
+    .select()
+    .from(expenseCategories)
+    .where(
+      and(
+        eq(expenseCategories.userId, userId),
+        or(gt(expenseCategories.updatedAt, since), gt(expenseCategories.deletedAt, since)),
+      ),
+    );
+}
+
+// Additive alongside getOrCreateExpenseCategory, which stays as-is for the
+// existing web Server Action path — see the matching function in
+// financial-accounts.ts for the LWW/cross-user-safety reasoning.
+export async function upsertExpenseCategoryFromSync(
+  userId: string,
+  id: string,
+  values: Omit<typeof expenseCategories.$inferInsert, "id" | "userId">,
+  clientUpdatedAt: Date,
+) {
+  const [row] = await db
+    .insert(expenseCategories)
+    .values({ id, userId, ...values, updatedAt: clientUpdatedAt })
+    .onConflictDoUpdate({
+      target: expenseCategories.id,
+      set: { ...values, updatedAt: clientUpdatedAt },
+      setWhere: sql`${expenseCategories.userId} = ${userId} and ${expenseCategories.updatedAt} < ${clientUpdatedAt}`,
+    })
+    .returning();
+
+  revalidateTag("vault-module-expense-categories", "max");
+  return row;
 }

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, isNull, lte, sum } from "drizzle-orm";
+import { and, eq, gt, gte, isNull, lte, or, sql, sum } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 
 import { db } from "@/lib/database/connection";
@@ -15,6 +15,7 @@ export const listBudgets = unstable_cache(
           eq(budgets.userId, userId),
           eq(budgets.month, month),
           eq(budgets.year, year),
+          isNull(budgets.deletedAt),
         ),
       );
   },
@@ -35,6 +36,7 @@ export const getTotalBudget = unstable_cache(
           eq(budgets.month, month),
           eq(budgets.year, year),
           isNull(budgets.categoryId),
+          isNull(budgets.deletedAt),
         ),
       )
       .limit(1);
@@ -76,6 +78,7 @@ export async function upsertBudget(
         categoryCondition,
         eq(budgets.month, input.month),
         eq(budgets.year, input.year),
+        isNull(budgets.deletedAt),
       ),
     )
     .limit(1);
@@ -111,9 +114,11 @@ export async function upsertBudget(
   return result;
 }
 
+// Soft-delete — see the deletedAt comment in lib/database/schema/budgets.ts.
 export async function deleteBudget(userId: string, id: string) {
   await db
-    .delete(budgets)
+    .update(budgets)
+    .set({ deletedAt: new Date() })
     .where(and(eq(budgets.id, id), eq(budgets.userId, userId)));
   revalidateTag("vault-module-budgets", "max");
 }
@@ -179,3 +184,39 @@ export const getCategorySpending = unstable_cache(
     tags: ["vault-module-budgets"],
   },
 );
+
+// --- Sync engine support (native-app) ---
+
+export async function listBudgetsChangedSince(userId: string, since: Date) {
+  return db
+    .select()
+    .from(budgets)
+    .where(
+      and(eq(budgets.userId, userId), or(gt(budgets.updatedAt, since), gt(budgets.deletedAt, since))),
+    );
+}
+
+// Additive alongside upsertBudget, which stays as-is for the existing web
+// Server Action path (it has its own check-then-write for the categoryId-
+// null-distinctness case — see that function's comment). This path is
+// simpler because the client always supplies its own row id, so conflicts
+// resolve unambiguously on the primary key regardless of categoryId nulls.
+export async function upsertBudgetFromSync(
+  userId: string,
+  id: string,
+  values: Omit<typeof budgets.$inferInsert, "id" | "userId">,
+  clientUpdatedAt: Date,
+) {
+  const [row] = await db
+    .insert(budgets)
+    .values({ id, userId, ...values, updatedAt: clientUpdatedAt })
+    .onConflictDoUpdate({
+      target: budgets.id,
+      set: { ...values, updatedAt: clientUpdatedAt },
+      setWhere: sql`${budgets.userId} = ${userId} and ${budgets.updatedAt} < ${clientUpdatedAt}`,
+    })
+    .returning();
+
+  revalidateTag("vault-module-budgets", "max");
+  return row;
+}

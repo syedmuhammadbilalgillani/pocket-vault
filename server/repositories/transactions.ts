@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   ilike,
   isNull,
@@ -219,6 +220,47 @@ export const getDailySpending = unstable_cache(
     tags: ["vault-module-transactions"],
   },
 );
+
+// --- Sync engine support (native-app) ---
+
+export async function listTransactionsChangedSince(userId: string, since: Date) {
+  return db
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        or(gt(transactions.updatedAt, since), gt(transactions.deletedAt, since)),
+      ),
+    );
+}
+
+// Additive alongside insertTransaction/updateTransactionRow, which stay
+// as-is for the existing web Server Action path — see the matching
+// function in financial-accounts.ts for the LWW/cross-user-safety
+// reasoning. `values.tags` here is already a plain string[] | null; the
+// local-SQLite-only JSON-text encoding is a native-app storage detail, not
+// part of this wire format.
+export async function upsertTransactionFromSync(
+  userId: string,
+  id: string,
+  values: Omit<typeof transactions.$inferInsert, "id" | "userId">,
+  clientUpdatedAt: Date,
+) {
+  const [row] = await db
+    .insert(transactions)
+    .values({ id, userId, ...values, updatedAt: clientUpdatedAt })
+    .onConflictDoUpdate({
+      target: transactions.id,
+      set: { ...values, updatedAt: clientUpdatedAt },
+      setWhere: sql`${transactions.userId} = ${userId} and ${transactions.updatedAt} < ${clientUpdatedAt}`,
+    })
+    .returning();
+
+  revalidateTag("vault-module-transactions", "max");
+  revalidateTag("vault-module-budgets", "max");
+  return row;
+}
 
 // System-level, no userId scope — same intentional exception as
 // getDueRecurringRules() and purgeOldTrashedVaultItems(). Backs the

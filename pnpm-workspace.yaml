@@ -1,3 +1,11 @@
+# native-app is a separate Tauri + Vite app (offline-first desktop/Android
+# client), not part of this Next.js app's build — listed here only so a
+# single `pnpm install` at the repo root can manage both apps' lockfiles.
+# It has its own independent package.json/dependency tree.
+packages:
+  - "."
+  - "native-app"
+
 allowBuilds:
   esbuild: true
   sharp: true

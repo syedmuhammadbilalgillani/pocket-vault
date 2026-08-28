@@ -26,6 +26,10 @@ export const expenseCategories = pgTable(
     isSystem: boolean("is_system").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Soft-delete, added for the native-app sync engine: a hard DELETE leaves
+    // no trace for /api/sync/pull to tell other devices "this was removed."
+    // See server/repositories/expense-categories.ts for the read-side filter.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [index("expense_categories_user_id_idx").on(table.userId)],
 )
@@ -45,6 +49,10 @@ export const financialAccounts = pgTable(
     isArchived: boolean("is_archived").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Soft-delete, added for the native-app sync engine — see the matching
+    // comment on expenseCategories above. Independent of isArchived, which
+    // is a deliberate hide-but-keep state, not a deletion.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [index("financial_accounts_user_id_idx").on(table.userId)],
 )

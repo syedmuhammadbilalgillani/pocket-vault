@@ -22,6 +22,15 @@ export const users = pgTable("users", {
   // ensureDefaultExpenseCategories / ensureDefaultVaultCategories.
   expenseCategoriesSeeded: boolean("expense_categories_seeded").notNull().default(false),
   vaultCategoriesSeeded: boolean("vault_categories_seeded").notNull().default(false),
+  // Random, non-secret per-user salt for the native-app's offline vault
+  // unlock (Phase 2 of the native-app plan): the client derives a local
+  // AES key from this user's login password + this salt (Argon2id,
+  // client-side) to wrap a device-local copy of decrypted vault fields for
+  // offline viewing. Lazily generated on first native login — see
+  // lib/auth/vault-unlock-salt.ts. This is unrelated to and does not
+  // change the server-side KEK/DEK envelope model (ADR-001); it only
+  // protects the offline cache.
+  vaultUnlockSalt: text("vault_unlock_salt"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
