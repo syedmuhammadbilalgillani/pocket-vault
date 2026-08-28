@@ -6,6 +6,11 @@ import { listExpenseCategoriesChangedSince } from "@/server/repositories/expense
 import { listTransactionsChangedSince } from "@/server/repositories/transactions"
 import { listBudgetsChangedSince } from "@/server/repositories/budgets"
 import { listVaultItemsChangedSince } from "@/server/repositories/vault-items"
+import { corsPreflight, withCors } from "@/lib/cors"
+
+export function OPTIONS() {
+  return corsPreflight()
+}
 
 // Delta pull for the native-app sync engine. `since` is the client's last
 // successful pull cursor (omit/invalid => epoch, i.e. a full initial sync).
@@ -19,7 +24,7 @@ import { listVaultItemsChangedSince } from "@/server/repositories/vault-items"
 export async function GET(request: NextRequest) {
   const auth = await requireBearerUser(request)
   if (!auth.ok) {
-    return NextResponse.json({ error: auth.message }, { status: auth.status })
+    return withCors(NextResponse.json({ error: auth.message }, { status: auth.status }))
   }
 
   const sinceParam = request.nextUrl.searchParams.get("since")
@@ -39,8 +44,10 @@ export async function GET(request: NextRequest) {
     listVaultItemsChangedSince(auth.userId, since),
   ])
 
-  return NextResponse.json({
-    serverTime,
-    changes: { financialAccounts, expenseCategories, transactions, budgets, vaultItems },
-  })
+  return withCors(
+    NextResponse.json({
+      serverTime,
+      changes: { financialAccounts, expenseCategories, transactions, budgets, vaultItems },
+    }),
+  )
 }

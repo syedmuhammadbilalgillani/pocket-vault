@@ -12,6 +12,11 @@ const envSchema = z.object({
   // Shared secret for the recurring-transactions scheduled job endpoint —
   // see app/api/cron/recurring/route.ts.
   CRON_SECRET: z.string().min(32).optional(),
+  // CORS origin allowed to call the native-app's endpoints
+  // (app/api/sync/*, app/api/auth/token) — see lib/cors.ts for why "*" is
+  // an acceptable default there specifically (bearer-token auth, no
+  // ambient cookie credential for a wildcard origin to ride along on).
+  NATIVE_APP_CORS_ORIGIN: z.string().default("*"),
 })
 
 export const env = envSchema.parse({
@@ -23,6 +28,7 @@ export const env = envSchema.parse({
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   VAULT_KEK_CURRENT_VERSION: process.env.VAULT_KEK_CURRENT_VERSION,
   CRON_SECRET: process.env.CRON_SECRET || undefined,
+  NATIVE_APP_CORS_ORIGIN: process.env.NATIVE_APP_CORS_ORIGIN || undefined,
 })
 
 if (env.NODE_ENV === "production" && !env.AUTH_SECRET) {

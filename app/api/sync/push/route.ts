@@ -13,6 +13,11 @@ import {
 import { softDeleteTransaction, upsertTransactionFromSync } from "@/server/repositories/transactions"
 import { deleteBudget, upsertBudgetFromSync } from "@/server/repositories/budgets"
 import { softDeleteVaultItem, upsertVaultItemFromSync } from "@/server/repositories/vault-items"
+import { corsPreflight, withCors } from "@/lib/cors"
+
+export function OPTIONS() {
+  return corsPreflight()
+}
 
 // Applies a batch of client-originated mutations from the native-app's
 // sync_outbox. Additive to the existing web Server Actions — this is the
@@ -184,13 +189,13 @@ async function applyOperation(userId: string, op: Operation): Promise<ApplyResul
 export async function POST(request: NextRequest) {
   const auth = await requireBearerUser(request)
   if (!auth.ok) {
-    return NextResponse.json({ error: auth.message }, { status: auth.status })
+    return withCors(NextResponse.json({ error: auth.message }, { status: auth.status }))
   }
 
   const body = await request.json().catch(() => null)
   const parsed = operationEnvelopeSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 })
+    return withCors(NextResponse.json({ error: "Invalid request" }, { status: 400 }))
   }
 
   const results: ApplyResult[] = []
@@ -198,5 +203,5 @@ export async function POST(request: NextRequest) {
     results.push(await applyOperation(auth.userId, op))
   }
 
-  return NextResponse.json({ results })
+  return withCors(NextResponse.json({ results }))
 }

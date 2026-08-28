@@ -6,6 +6,11 @@ import { createSession } from "@/lib/auth/session-store"
 import { getClientIp, maskIpAddress, summarizeUserAgent } from "@/lib/auth/request-info"
 import { logAuditEvent } from "@/lib/auth/audit"
 import { ensureVaultUnlockSalt } from "@/lib/auth/vault-unlock-salt"
+import { corsPreflight, withCors } from "@/lib/cors"
+
+export function OPTIONS() {
+  return corsPreflight()
+}
 
 // Native-app login: the Tauri client has no browser cookie jar for a
 // NextAuth JWT, so it authenticates here instead and gets back a raw
@@ -30,7 +35,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const parsed = tokenRequestSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 })
+    return withCors(NextResponse.json({ error: "Invalid request" }, { status: 400 }))
   }
 
   const { email, password, deviceLabel } = parsed.data
@@ -45,7 +50,7 @@ export async function POST(request: NextRequest) {
         : result.reason === "email_not_verified"
           ? "Please verify your email before logging in."
           : "Invalid email or password."
-    return NextResponse.json({ error: message }, { status })
+    return withCors(NextResponse.json({ error: message }, { status }))
   }
 
   const { user } = result
@@ -69,12 +74,14 @@ export async function POST(request: NextRequest) {
   // the offline vault-unlock key from the same password the user just typed.
   const vaultUnlockSalt = await ensureVaultUnlockSalt(user.id)
 
-  return NextResponse.json({
-    token,
-    sessionId,
-    userId: user.id,
-    email: user.email,
-    displayName: user.displayName,
-    vaultUnlockSalt,
-  })
+  return withCors(
+    NextResponse.json({
+      token,
+      sessionId,
+      userId: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      vaultUnlockSalt,
+    }),
+  )
 }
