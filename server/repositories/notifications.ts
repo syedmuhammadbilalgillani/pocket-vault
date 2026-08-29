@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gte, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, or } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 
 import { db } from "@/lib/database/connection";
@@ -89,4 +89,23 @@ export async function hasRecentNotification(
     )
     .limit(1);
   return !!row;
+}
+
+// --- Sync engine support (native-app) ---
+
+// Notifications are server-authored (cron jobs, budget alerts) — the
+// native app only ever pulls them and pushes back "mark read" (see
+// app/api/sync/push's dedicated "markRead" op), never an upsert of
+// title/message/type. No updatedAt column exists (see the schema), so
+// "changed" means either newly created or newly read since the cursor.
+export async function listNotificationsChangedSince(userId: string, since: Date) {
+  return db
+    .select()
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        or(gt(notifications.createdAt, since), gt(notifications.readAt, since)),
+      ),
+    );
 }

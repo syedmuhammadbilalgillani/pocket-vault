@@ -12,7 +12,14 @@ import {
 } from "@/server/repositories/expense-categories"
 import { softDeleteTransaction, upsertTransactionFromSync } from "@/server/repositories/transactions"
 import { deleteBudget, upsertBudgetFromSync } from "@/server/repositories/budgets"
-import { softDeleteVaultItem, upsertVaultItemFromSync } from "@/server/repositories/vault-items"
+import {
+  restoreVaultItem,
+  softDeleteVaultItem,
+  upsertVaultItemFromSync,
+} from "@/server/repositories/vault-items"
+import { upsertVaultCategoryFromSync } from "@/server/repositories/vault-categories"
+import { deleteRecurringRule, upsertRecurringRuleFromSync } from "@/server/repositories/recurring-rules"
+import { markNotificationRead } from "@/server/repositories/notifications"
 import { corsPreflight, withCors } from "@/lib/cors"
 
 export function OPTIONS() {
@@ -32,14 +39,26 @@ export function OPTIONS() {
 // upsertVaultItemFromSync, which encrypts server-side with the normal
 // KEK/DEK envelope (ADR-001), same as the web Server Action path.
 
-const SYNC_TABLES = ["financialAccounts", "expenseCategories", "transactions", "budgets", "vaultItems"] as const
+const SYNC_TABLES = [
+  "financialAccounts",
+  "expenseCategories",
+  "transactions",
+  "budgets",
+  "vaultItems",
+  "vaultCategories",
+  "recurringRules",
+  "notifications",
+] as const
 
 const operationEnvelopeSchema = z.object({
   operations: z
     .array(
       z.object({
         table: z.enum(SYNC_TABLES),
-        op: z.enum(["upsert", "delete"]),
+        // "restore" only means anything for vaultItems (trash/restore);
+        // "markRead" only for notifications. Every other table/op
+        // combination just no-ops (see the switch statements below).
+        op: z.enum(["upsert", "delete", "restore", "markRead"]),
         id: z.string().uuid(),
         clientUpdatedAt: z.string().datetime(),
         data: z.record(z.string(), z.unknown()).optional(),
@@ -95,6 +114,25 @@ const vaultItemDataSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
 })
 
+const vaultCategoryDataSchema = z.object({
+  name: z.string().min(1).max(100),
+  icon: z.string().max(50).nullable().optional(),
+})
+
+const recurringRuleDataSchema = z.object({
+  transactionType: z.enum(["expense", "income", "refund", "transfer"]),
+  amountMinor: z.number().int(),
+  currency: z.string().length(3),
+  categoryId: z.string().uuid().nullable().optional(),
+  description: z.string().max(1000).nullable().optional(),
+  frequency: z.enum(["daily", "weekly", "monthly", "quarterly", "yearly", "custom"]),
+  interval: z.number().int().min(1).optional().default(1),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  nextRunAt: z.string().datetime(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  isActive: z.boolean().optional().default(true),
+})
+
 const budgetDataSchema = z.object({
   categoryId: z.string().uuid().nullable().optional(),
   month: z.number().int().min(1).max(12),
@@ -110,6 +148,22 @@ type ApplyResult = { id: string; table: string; status: "applied" | "skipped" | 
 
 async function applyOperation(userId: string, op: Operation): Promise<ApplyResult> {
   try {
+    if (op.op === "markRead") {
+      if (op.table !== "notifications") {
+        return { id: op.id, table: op.table, status: "skipped" }
+      }
+      await markNotificationRead(userId, op.id)
+      return { id: op.id, table: op.table, status: "applied" }
+    }
+
+    if (op.op === "restore") {
+      if (op.table !== "vaultItems") {
+        return { id: op.id, table: op.table, status: "skipped" }
+      }
+      await restoreVaultItem(userId, op.id)
+      return { id: op.id, table: op.table, status: "applied" }
+    }
+
     if (op.op === "delete") {
       switch (op.table) {
         case "financialAccounts":
@@ -126,6 +180,15 @@ async function applyOperation(userId: string, op: Operation): Promise<ApplyResul
           break
         case "vaultItems":
           await softDeleteVaultItem(userId, op.id)
+          break
+        case "recurringRules":
+          await deleteRecurringRule(userId, op.id)
+          break
+        case "vaultCategories":
+        case "notifications":
+          // No client-initiated delete path for either — vault categories
+          // are never removed (see listVaultCategoriesChangedSince), and
+          // notifications are server-authored (see listNotificationsChangedSince).
           break
       }
       return { id: op.id, table: op.table, status: "applied" }
@@ -149,11 +212,43 @@ async function applyOperation(userId: string, op: Operation): Promise<ApplyResul
         const row = await upsertTransactionFromSync(userId, op.id, values, clientUpdatedAt)
         return { id: op.id, table: op.table, status: row ? "applied" : "skipped" }
       }
+      case "vaultCategories": {
+        const values = vaultCategoryDataSchema.parse(op.data)
+        const row = await upsertVaultCategoryFromSync(userId, op.id, { name: values.name, icon: values.icon ?? null }, clientUpdatedAt)
+        return { id: op.id, table: op.table, status: row ? "applied" : "skipped" }
+      }
       case "budgets": {
         const values = budgetDataSchema.parse(op.data)
         const row = await upsertBudgetFromSync(userId, op.id, values, clientUpdatedAt)
         return { id: op.id, table: op.table, status: row ? "applied" : "skipped" }
       }
+      case "recurringRules": {
+        const values = recurringRuleDataSchema.parse(op.data)
+        const row = await upsertRecurringRuleFromSync(
+          userId,
+          op.id,
+          {
+            transactionType: values.transactionType,
+            amountMinor: values.amountMinor,
+            currency: values.currency,
+            categoryId: values.categoryId ?? null,
+            description: values.description ?? null,
+            frequency: values.frequency,
+            interval: values.interval ?? 1,
+            startDate: values.startDate,
+            nextRunAt: new Date(values.nextRunAt),
+            endDate: values.endDate ?? null,
+            isActive: values.isActive ?? true,
+          },
+          clientUpdatedAt,
+        )
+        return { id: op.id, table: op.table, status: row ? "applied" : "skipped" }
+      }
+      case "notifications":
+        // No client-initiated upsert path — see the delete-switch comment
+        // above. An "upsert" op reaching here for this table is a client
+        // bug, not a real state to apply.
+        return { id: op.id, table: op.table, status: "skipped" }
       case "vaultItems": {
         const values = vaultItemDataSchema.parse(op.data)
         const row = await upsertVaultItemFromSync(

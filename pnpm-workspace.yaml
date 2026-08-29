@@ -1,11 +1,8 @@
-# native-app is a separate Tauri + Vite app (offline-first desktop/Android
-# client), not part of this Next.js app's build — listed here only so a
-# single `pnpm install` at the repo root can manage both apps' lockfiles.
-# It has its own independent package.json/dependency tree.
-packages:
-  - "."
-  - "native-app"
-
+# native-app (the offline-first Tauri/Vite desktop+Android client) now
+# lives in its own separate folder outside this repo, with its own
+# package.json/lockfile/pnpm-workspace.yaml — it was moved out to avoid a
+# Windows file-locking issue between OneDrive's sync of this repo's folder
+# and Cargo's build output. Nothing to reference here anymore.
 allowBuilds:
   esbuild: true
   sharp: true

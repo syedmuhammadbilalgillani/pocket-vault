@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 
 import { db } from "@/lib/database/connection";
@@ -80,4 +80,39 @@ export async function ensureDefaultVaultCategories(userId: string) {
 
   revalidateTag("vault-module-vault-categories", "max");
   return created;
+}
+
+// --- Sync engine support (native-app) ---
+
+// No deletedAt/delete path exists for vault categories today (web or
+// native) — they're only ever created, never removed — so this is just a
+// plain "created or updated since" query, no tombstone handling needed.
+export async function listVaultCategoriesChangedSince(userId: string, since: Date) {
+  return db
+    .select()
+    .from(vaultCategories)
+    .where(and(eq(vaultCategories.userId, userId), gt(vaultCategories.updatedAt, since)));
+}
+
+// Additive alongside getOrCreateVaultCategory, which stays as-is for the
+// web path. LWW/cross-user-safety reasoning matches the other *FromSync
+// functions in server/repositories/*.ts.
+export async function upsertVaultCategoryFromSync(
+  userId: string,
+  id: string,
+  values: { name: string; icon: string | null },
+  clientUpdatedAt: Date,
+) {
+  const [row] = await db
+    .insert(vaultCategories)
+    .values({ id, userId, ...values, updatedAt: clientUpdatedAt })
+    .onConflictDoUpdate({
+      target: vaultCategories.id,
+      set: { ...values, updatedAt: clientUpdatedAt },
+      setWhere: sql`${vaultCategories.userId} = ${userId} and ${vaultCategories.updatedAt} < ${clientUpdatedAt}`,
+    })
+    .returning();
+
+  revalidateTag("vault-module-vault-categories", "max");
+  return row;
 }

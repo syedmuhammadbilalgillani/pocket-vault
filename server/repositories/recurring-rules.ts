@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, eq, gt, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 
 import { db } from "@/lib/database/connection";
@@ -10,7 +10,7 @@ export const listRecurringRules = unstable_cache(
     return db
       .select()
       .from(recurringRules)
-      .where(eq(recurringRules.userId, userId))
+      .where(and(eq(recurringRules.userId, userId), isNull(recurringRules.deletedAt)))
       .orderBy(asc(recurringRules.nextRunAt));
   },
   ["listRecurringRules"],
@@ -24,7 +24,13 @@ export const getRecurringRule = unstable_cache(
     const [row] = await db
       .select()
       .from(recurringRules)
-      .where(and(eq(recurringRules.id, id), eq(recurringRules.userId, userId)))
+      .where(
+        and(
+          eq(recurringRules.id, id),
+          eq(recurringRules.userId, userId),
+          isNull(recurringRules.deletedAt),
+        ),
+      )
       .limit(1);
     return row ?? null;
   },
@@ -65,9 +71,15 @@ export async function updateRecurringRule(
   return row ?? null;
 }
 
+// Soft-delete — see the deletedAt comment in
+// lib/database/schema/recurring.ts. Also flips isActive off so
+// getDueRecurringRules (which the cron job uses and doesn't otherwise
+// filter on deletedAt, see below) can't generate transactions from it in
+// the gap before that query is ever hit again.
 export async function deleteRecurringRule(userId: string, id: string) {
   await db
-    .delete(recurringRules)
+    .update(recurringRules)
+    .set({ deletedAt: new Date(), isActive: false })
     .where(and(eq(recurringRules.id, id), eq(recurringRules.userId, userId)));
   revalidateTag("vault-module-recurring-rules", "max");
 }
@@ -87,6 +99,7 @@ export async function getDueRecurringRules(asOf: Date) {
     .where(
       and(
         eq(recurringRules.isActive, true),
+        isNull(recurringRules.deletedAt),
         lte(recurringRules.nextRunAt, asOf),
         or(
           isNull(recurringRules.endDate),
@@ -94,4 +107,42 @@ export async function getDueRecurringRules(asOf: Date) {
         ),
       ),
     );
+}
+
+// --- Sync engine support (native-app) ---
+
+export async function listRecurringRulesChangedSince(userId: string, since: Date) {
+  return db
+    .select()
+    .from(recurringRules)
+    .where(
+      and(
+        eq(recurringRules.userId, userId),
+        or(gt(recurringRules.updatedAt, since), gt(recurringRules.deletedAt, since)),
+      ),
+    );
+}
+
+// Additive alongside insertRecurringRule/updateRecurringRule, which stay
+// as-is for the existing web Server Action path — see the matching
+// function in financial-accounts.ts for the LWW/cross-user-safety
+// reasoning.
+export async function upsertRecurringRuleFromSync(
+  userId: string,
+  id: string,
+  values: Omit<typeof recurringRules.$inferInsert, "id" | "userId">,
+  clientUpdatedAt: Date,
+) {
+  const [row] = await db
+    .insert(recurringRules)
+    .values({ id, userId, ...values, updatedAt: clientUpdatedAt })
+    .onConflictDoUpdate({
+      target: recurringRules.id,
+      set: { ...values, updatedAt: clientUpdatedAt },
+      setWhere: sql`${recurringRules.userId} = ${userId} and ${recurringRules.updatedAt} < ${clientUpdatedAt}`,
+    })
+    .returning();
+
+  revalidateTag("vault-module-recurring-rules", "max");
+  return row;
 }
