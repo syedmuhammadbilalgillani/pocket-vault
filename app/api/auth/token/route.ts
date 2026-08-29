@@ -40,48 +40,62 @@ export async function POST(request: NextRequest) {
 
   const { email, password, deviceLabel } = parsed.data
   const ip = maskIpAddress(getClientIp(request))
-  const result = await authenticateWithPassword(email, password, ip)
 
-  if (!result.ok) {
-    const status = result.reason === "rate_limited" ? 429 : 401
-    const message =
-      result.reason === "rate_limited"
-        ? "Too many attempts. Try again later."
-        : result.reason === "email_not_verified"
-          ? "Please verify your email before logging in."
-          : "Invalid email or password."
-    return withCors(NextResponse.json({ error: message }, { status }))
-  }
+  try {
+    const result = await authenticateWithPassword(email, password, ip)
 
-  const { user } = result
-  const userAgent = summarizeUserAgent(request.headers.get("user-agent"))
-  const { sessionId, token } = await createSession(user.id, {
-    deviceName: deviceLabel ?? userAgent.deviceName,
-    browser: userAgent.browser,
-    operatingSystem: userAgent.operatingSystem,
-    ipAddressMasked: ip,
-  })
+    if (!result.ok) {
+      const status = result.reason === "rate_limited" ? 429 : 401
+      const message =
+        result.reason === "rate_limited"
+          ? "Too many attempts. Try again later."
+          : result.reason === "email_not_verified"
+            ? "Please verify your email before logging in."
+            : "Invalid email or password."
+      return withCors(NextResponse.json({ error: message }, { status }))
+    }
 
-  await logAuditEvent({
-    userId: user.id,
-    eventType: "login.success",
-    ipAddressMasked: ip,
-    userAgentSummary: deviceLabel ?? userAgent.deviceName,
-  })
+    const { user } = result
+    const userAgent = summarizeUserAgent(request.headers.get("user-agent"))
+    const { sessionId, token } = await createSession(user.id, {
+      deviceName: deviceLabel ?? userAgent.deviceName,
+      browser: userAgent.browser,
+      operatingSystem: userAgent.operatingSystem,
+      ipAddressMasked: ip,
+    })
 
-  // Not secret — see the schema comment on users.vaultUnlockSalt — safe to
-  // return alongside the session token. The native app needs it to derive
-  // the offline vault-unlock key from the same password the user just typed.
-  const vaultUnlockSalt = await ensureVaultUnlockSalt(user.id)
-
-  return withCors(
-    NextResponse.json({
-      token,
-      sessionId,
+    await logAuditEvent({
       userId: user.id,
-      email: user.email,
-      displayName: user.displayName,
-      vaultUnlockSalt,
-    }),
-  )
+      eventType: "login.success",
+      ipAddressMasked: ip,
+      userAgentSummary: deviceLabel ?? userAgent.deviceName,
+    })
+
+    // Not secret — see the schema comment on users.vaultUnlockSalt — safe to
+    // return alongside the session token. The native app needs it to derive
+    // the offline vault-unlock key from the same password the user just typed.
+    const vaultUnlockSalt = await ensureVaultUnlockSalt(user.id)
+
+    return withCors(
+      NextResponse.json({
+        token,
+        sessionId,
+        userId: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        vaultUnlockSalt,
+      }),
+    )
+  } catch (error) {
+    // See the matching comment in app/api/sync/pull/route.ts — an
+    // uncaught exception here would otherwise surface to the client as an
+    // opaque CORS failure instead of the real error.
+    console.error("[auth/token] failed", error)
+    return withCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : "Internal error" },
+        { status: 500 },
+      ),
+    )
+  }
 }

@@ -37,14 +37,24 @@ export async function POST(request: NextRequest) {
     return withCors(NextResponse.json({ error: 'Type "DELETE" to confirm.' }, { status: 400 }))
   }
 
-  const valid = await verifyCurrentPassword(auth.userId, parsed.data.password)
-  if (!valid) {
-    await logAuditEvent({ userId: auth.userId, eventType: "account.deletion_reauth_failed" })
-    return withCors(NextResponse.json({ error: "Incorrect password" }, { status: 401 }))
+  try {
+    const valid = await verifyCurrentPassword(auth.userId, parsed.data.password)
+    if (!valid) {
+      await logAuditEvent({ userId: auth.userId, eventType: "account.deletion_reauth_failed" })
+      return withCors(NextResponse.json({ error: "Incorrect password" }, { status: 401 }))
+    }
+
+    await logAuditEvent({ userId: auth.userId, eventType: "account.deleted" })
+    await db.delete(users).where(eq(users.id, auth.userId))
+
+    return withCors(NextResponse.json({ success: true }))
+  } catch (error) {
+    console.error("[account/delete] failed", error)
+    return withCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : "Internal error" },
+        { status: 500 },
+      ),
+    )
   }
-
-  await logAuditEvent({ userId: auth.userId, eventType: "account.deleted" })
-  await db.delete(users).where(eq(users.id, auth.userId))
-
-  return withCors(NextResponse.json({ success: true }))
 }

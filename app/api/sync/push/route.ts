@@ -293,10 +293,23 @@ export async function POST(request: NextRequest) {
     return withCors(NextResponse.json({ error: "Invalid request" }, { status: 400 }))
   }
 
-  const results: ApplyResult[] = []
-  for (const op of parsed.data.operations) {
-    results.push(await applyOperation(auth.userId, op))
+  // Per-operation failures are already caught inside applyOperation and
+  // returned as a "error" status per op; this is a last-resort net for
+  // anything unexpected outside that loop, so a failure here still comes
+  // back CORS'd instead of masquerading as a CORS error client-side.
+  try {
+    const results: ApplyResult[] = []
+    for (const op of parsed.data.operations) {
+      results.push(await applyOperation(auth.userId, op))
+    }
+    return withCors(NextResponse.json({ results }))
+  } catch (error) {
+    console.error("[sync/push] failed", error)
+    return withCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : "Internal error" },
+        { status: 500 },
+      ),
+    )
   }
-
-  return withCors(NextResponse.json({ results }))
 }
